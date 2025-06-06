@@ -52,23 +52,13 @@ public class TimetableGUI extends JFrame {
         JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
 
         addButton = new JButton("과목 추가");
-        addButton.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                openSubjectSearchWindow();
-            }
-        });
+        addButton.addActionListener(e -> openSubjectSearchWindow());
         topPanel.add(addButton);
 
         topPanel.add(new JLabel(" | "));
 
         importButton = new JButton("시간표 추가");
-        importButton.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                openLectureCrawler();
-            }
-        });
+        importButton.addActionListener(e -> openLectureCrawler());
         topPanel.add(importButton);
 
         return topPanel;
@@ -76,7 +66,10 @@ public class TimetableGUI extends JFrame {
 
     private void initTimetableGrid() {
         String[] days = {"월", "화", "수", "목", "금"};
-        String[] times = {"9시", "10시", "11시", "12시", "13시", "14시", "15시", "16시", "17시"};
+        String[] times = {
+            "9시", "10시", "11시", "12시", "13시", "14시",
+            "15시", "16시", "17시", "18시", "19시", "20시", "21시"
+        };
 
         gbc.gridx = 0;
         gbc.gridy = 0;
@@ -98,8 +91,8 @@ public class TimetableGUI extends JFrame {
             JLabel label = new JLabel(times[i], SwingConstants.CENTER);
             label.setBorder(BorderFactory.createLineBorder(Color.GRAY));
             timetablePanel.add(label, gbc);
-
             gbc.gridheight = 1;
+
             for (int j = 0; j < days.length; j++) {
                 for (int k = 0; k < 2; k++) {
                     gbc.gridx = j + 1;
@@ -114,26 +107,13 @@ public class TimetableGUI extends JFrame {
     }
 
     private void openSubjectSearchWindow() {
-        SwingUtilities.invokeLater(new Runnable() {
-            @Override
-            public void run() {
-                SubjectSearchWindow searchWindow = new SubjectSearchWindow(TimetableGUI.this, null);
-                searchWindow.setVisible(true);
-            }
-        });
+        SwingUtilities.invokeLater(() -> new SubjectSearchWindow(TimetableGUI.this, null).setVisible(true));
     }
 
     private void openLectureCrawler() {
-        SwingUtilities.invokeLater(new Runnable() {
-            @Override
-            public void run() {
-                KnuLectureCrawlerGUI crawler = new KnuLectureCrawlerGUI(0, TimetableGUI.this);
-                crawler.setVisible(true);
-            }
-        });
+        SwingUtilities.invokeLater(() -> new KnuLectureCrawlerGUI(0, TimetableGUI.this).setVisible(true));
     }
 
-    // "기존 방식" 추가
     public void addSubjectToTable(String name, String prof, String place, int col, int row, int height, Color color) {
         String timeInfo = calculateTimeInfo(row, height);
         addSubject(name, prof, place, col, row, height, color, timeInfo);
@@ -147,11 +127,8 @@ public class TimetableGUI extends JFrame {
         timetablePanel.repaint();
     }
 
-    // "slot" 기반 boolean 추가 (겹침 체크 포함)
     public boolean addSubjectSlot(String name, String prof, String place, int col, int row, int height, Color color, String timeInfo) {
-        if (isTimeOverlapped(col, row, height)) {
-            return false;
-        }
+        if (isTimeOverlapped(col, row, height)) return false;
         addSubject(name, prof, place, col, row, height, color, timeInfo);
         timetablePanel.revalidate();
         timetablePanel.repaint();
@@ -176,16 +153,10 @@ public class TimetableGUI extends JFrame {
         SubjectInfo info = new SubjectInfo(name, prof, place, col, row, height, timeInfo);
         subjectInfoMap.put(subject, info);
 
-        subject.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                showSubjectInfoAndConfirmDelete(subject, info);
-            }
-        });
+        subject.addActionListener(e -> showSubjectInfoAndConfirmDelete(subject, info));
 
         timetablePanel.add(subject, gbc);
         timetablePanel.setComponentZOrder(subject, 0);
-
         gbc.gridheight = 1;
     }
 
@@ -205,13 +176,8 @@ public class TimetableGUI extends JFrame {
             message.append("이 과목을 시간표에서 삭제하시겠습니까?");
         }
 
-        int option = JOptionPane.showConfirmDialog(
-                this,
-                message.toString(),
-                "과목 정보",
-                JOptionPane.YES_NO_OPTION,
-                JOptionPane.QUESTION_MESSAGE
-        );
+        int option = JOptionPane.showConfirmDialog(this, message.toString(), "과목 정보",
+                JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
 
         if (option == JOptionPane.YES_OPTION) {
             removeSameNameSubjects(info.getName());
@@ -221,15 +187,13 @@ public class TimetableGUI extends JFrame {
     private int countSameNameSubjects(String subjectName) {
         int count = 0;
         for (SubjectInfo info : subjectInfoMap.values()) {
-            if (info.getName().equals(subjectName)) {
-                count++;
-            }
+            if (info.getName().equals(subjectName)) count++;
         }
         return count;
     }
 
     private void removeSameNameSubjects(String subjectName) {
-        java.util.List<JButton> buttonsToRemove = new java.util.ArrayList<JButton>();
+        java.util.List<JButton> buttonsToRemove = new ArrayList<>();
         for (Map.Entry<JButton, SubjectInfo> entry : subjectInfoMap.entrySet()) {
             if (entry.getValue().getName().equals(subjectName)) {
                 buttonsToRemove.add(entry.getKey());
@@ -253,7 +217,6 @@ public class TimetableGUI extends JFrame {
         return String.format("%02d:%02d~%02d:%02d", startHour, startMinute, endHour, endMinute);
     }
 
-    // 시간 겹침 검사
     public boolean isTimeOverlapped(int col, int row, int height) {
         int newStart = row;
         int newEnd = row + height - 1;
@@ -269,14 +232,18 @@ public class TimetableGUI extends JFrame {
         return false;
     }
 
+    public boolean isSubjectAlreadyAdded(String subjectName) {
+        for (SubjectInfo info : subjectInfoMap.values()) {
+            if (info.getName().equals(subjectName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static class SubjectInfo {
-        private String name;
-        private String professor;
-        private String classroom;
-        private int col;
-        private int row;
-        private int height;
-        private String timeInfo;
+        private String name, professor, classroom, timeInfo;
+        private int col, row, height;
 
         public SubjectInfo(String name, String professor, String classroom, int col, int row, int height, String timeInfo) {
             this.name = name;
@@ -287,6 +254,7 @@ public class TimetableGUI extends JFrame {
             this.height = height;
             this.timeInfo = timeInfo;
         }
+
         public String getName() { return name; }
         public String getProfessor() { return professor; }
         public String getClassroom() { return classroom; }
@@ -298,11 +266,6 @@ public class TimetableGUI extends JFrame {
 
     public static void main(String[] args) {
         UIManager.put("Button.foreground", Color.BLACK);
-        SwingUtilities.invokeLater(new Runnable() {
-            @Override
-            public void run() {
-                new TimetableGUI();
-            }
-        });
+        SwingUtilities.invokeLater(() -> new TimetableGUI());
     }
 }
