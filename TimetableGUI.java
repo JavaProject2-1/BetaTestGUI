@@ -3,7 +3,15 @@ package basicWeb;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
-import java.util.*;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.Comparator;
+import java.util.LinkedList;
+import java.util.Set;
+import java.util.HashSet;
+
 
 public class TimetableGUI extends JFrame {
     private JPanel timetablePanel;
@@ -11,6 +19,12 @@ public class TimetableGUI extends JFrame {
     private JButton addButton;
     private JButton importButton;
     private Map<JButton, SubjectInfo> subjectInfoMap;
+
+    // --- 색상 자동 할당을 위한 필드 추가 ---
+    private final List<Color> colorPalette = new ArrayList<>();
+    private final Map<String, Color> subjectColorMap = new HashMap<>();
+    private int nextColorIndex = 0;
+    // --- ---
 
     public TimetableGUI() {
         try {
@@ -24,7 +38,10 @@ public class TimetableGUI extends JFrame {
         setLocationRelativeTo(null);
         setLayout(new BorderLayout());
 
+        // --- 초기화 로직 추가 ---
+        initializeColorPalette();
         subjectInfoMap = new HashMap<>();
+        // --- ---
 
         timetablePanel = new JPanel(new GridBagLayout());
         timetablePanel.setBackground(Color.WHITE);
@@ -47,6 +64,31 @@ public class TimetableGUI extends JFrame {
         add(scrollPane, BorderLayout.CENTER);
         setVisible(true);
     }
+    
+    // --- 색상 팔레트 초기화 메서드 ---
+    private void initializeColorPalette() {
+        colorPalette.add(new Color(173, 216, 230)); // Light Blue
+        colorPalette.add(new Color(255, 182, 193)); // Light Pink
+        colorPalette.add(new Color(144, 238, 144)); // Light Green
+        colorPalette.add(new Color(255, 255, 224)); // Light Yellow
+        colorPalette.add(new Color(221, 160, 221)); // Plum (Lavender-ish)
+        colorPalette.add(new Color(255, 218, 185)); // Peach Puff
+        colorPalette.add(new Color(175, 238, 238)); // Pale Turquoise
+        colorPalette.add(new Color(240, 230, 140)); // Khaki
+    }
+
+    // --- 과목명에 따라 색상을 할당하거나 기존 색상을 반환하는 메서드 ---
+    private synchronized Color getSubjectColor(String subjectName) {
+        if (subjectColorMap.containsKey(subjectName)) {
+            return subjectColorMap.get(subjectName);
+        } else {
+            Color newColor = colorPalette.get(nextColorIndex);
+            subjectColorMap.put(subjectName, newColor);
+            nextColorIndex = (nextColorIndex + 1) % colorPalette.size(); // 다음 인덱스로 이동 (순환)
+            return newColor;
+        }
+    }
+    // --- ---
 
     private JPanel createTopPanel() {
         JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
@@ -115,21 +157,61 @@ public class TimetableGUI extends JFrame {
     }
 
     public void addSubjectToTable(String name, String prof, String place, int col, int row, int height, Color color) {
-        String timeInfo = calculateTimeInfo(row, height);
-        addSubject(name, prof, place, col, row, height, color, timeInfo);
-        timetablePanel.revalidate();
-        timetablePanel.repaint();
+        addSubjectSlot(name, prof, place, col, row, height, color, null);
     }
 
     public void addSubjectToTableWithTime(String name, String prof, String place, int col, int row, int height, Color color, String timeInfo) {
-        addSubject(name, prof, place, col, row, height, color, timeInfo);
-        timetablePanel.revalidate();
-        timetablePanel.repaint();
+        addSubjectSlot(name, prof, place, col, row, height, color, timeInfo);
     }
 
-    public boolean addSubjectSlot(String name, String prof, String place, int col, int row, int height, Color color, String timeInfo) {
-        if (isTimeOverlapped(col, row, height)) return false;
-        addSubject(name, prof, place, col, row, height, color, timeInfo);
+    public synchronized boolean addSubjectSlot(String name, String prof, String place, int col, int row, int height, Color ignoredColor, String timeInfo) {
+        // --- 색상을 외부에서 받지 않고 내부적으로 자동 할당 ---
+        Color subjectColor = getSubjectColor(name);
+        // --- ---
+        
+        List<SubjectInfo> pieces = new ArrayList<>();
+        pieces.add(new SubjectInfo(name, prof, place, col, row, height, ""));
+
+        List<JButton> buttonsToRemove = new ArrayList<>();
+        for (Map.Entry<JButton, SubjectInfo> entry : subjectInfoMap.entrySet()) {
+            SubjectInfo existingInfo = entry.getValue();
+            if (existingInfo.getName().equals(name) && existingInfo.getCol() == col) {
+                buttonsToRemove.add(entry.getKey());
+                pieces.add(existingInfo);
+            }
+        }
+
+        for (JButton button : buttonsToRemove) {
+            timetablePanel.remove(button);
+            subjectInfoMap.remove(button);
+        }
+
+        pieces.sort(Comparator.comparingInt(SubjectInfo::getRow));
+
+        LinkedList<SubjectInfo> mergedBlocks = new LinkedList<>();
+        for (SubjectInfo piece : pieces) {
+            if (mergedBlocks.isEmpty() || mergedBlocks.getLast().getRow() + mergedBlocks.getLast().getHeight() < piece.getRow()) {
+                mergedBlocks.add(new SubjectInfo(piece.name, piece.professor, piece.classroom, piece.col, piece.row, piece.height, ""));
+            } else {
+                SubjectInfo lastBlock = mergedBlocks.getLast();
+                int mergedHeight = (piece.getRow() + piece.getHeight()) - lastBlock.getRow();
+                lastBlock.height = mergedHeight;
+            }
+        }
+        
+        for (SubjectInfo block : mergedBlocks) {
+            if (isTimeOverlapped(block.getCol(), block.getRow(), block.getHeight())) {
+                 System.err.println("Error: Merged subject " + name + " overlaps with another subject.");
+                return false;
+            }
+        }
+        
+        for (SubjectInfo block : mergedBlocks) {
+            String newTimeInfo = calculateTimeInfo(block.getRow(), block.getHeight());
+            // --- 자동 할당된 색상(subjectColor)을 사용 ---
+            addSubject(block.getName(), block.getProfessor(), block.getClassroom(), block.getCol(), block.getRow(), block.getHeight(), subjectColor, newTimeInfo);
+        }
+
         timetablePanel.revalidate();
         timetablePanel.repaint();
         return true;
@@ -140,7 +222,7 @@ public class TimetableGUI extends JFrame {
         gbc.gridy = row;
         gbc.gridheight = height;
 
-        JButton subject = new JButton("<html><b>" + name + "</b><br>" + prof + "<br>" + place + "</html>");
+        JButton subject = new JButton("<html><center><b>" + name + "</b><br>" + prof + "<br>" + place + "</center></html>");
         subject.setOpaque(true);
         subject.setContentAreaFilled(true);
         subject.setBorderPainted(true);
@@ -185,11 +267,22 @@ public class TimetableGUI extends JFrame {
     }
 
     private int countSameNameSubjects(String subjectName) {
-        int count = 0;
+        Set<String> uniqueSubjectNames = new HashSet<>();
         for (SubjectInfo info : subjectInfoMap.values()) {
-            if (info.getName().equals(subjectName)) count++;
+            uniqueSubjectNames.add(info.getName());
         }
-        return count;
+        int count = 0;
+        if(uniqueSubjectNames.contains(subjectName)) {
+            // Count how many different days this subject is on
+            Set<Integer> days = new HashSet<>();
+            for(SubjectInfo info : subjectInfoMap.values()){
+                if(info.getName().equals(subjectName)){
+                    days.add(info.getCol());
+                }
+            }
+            return days.size();
+        }
+        return 0;
     }
 
     private void removeSameNameSubjects(String subjectName) {
@@ -203,6 +296,11 @@ public class TimetableGUI extends JFrame {
             timetablePanel.remove(button);
             subjectInfoMap.remove(button);
         }
+        
+        // --- 과목 삭제 시 색상 맵에서도 제거 ---
+        subjectColorMap.remove(subjectName);
+        // --- ---
+        
         timetablePanel.revalidate();
         timetablePanel.repaint();
     }
@@ -266,6 +364,6 @@ public class TimetableGUI extends JFrame {
 
     public static void main(String[] args) {
         UIManager.put("Button.foreground", Color.BLACK);
-        SwingUtilities.invokeLater(() -> new TimetableGUI());
+        SwingUtilities.invokeLater(TimetableGUI::new);
     }
 }
