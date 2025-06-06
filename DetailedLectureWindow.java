@@ -211,61 +211,85 @@ public class DetailedLectureWindow extends JFrame {
      */
     private List<String> checkConflicts(List<DetailedSubject> selectedSubjects) {
         List<String> conflicts = new ArrayList<>();
-        
+
         for (DetailedSubject newSubject : selectedSubjects) {
-            // 1. 같은 과목 중복 검사
-            for (DetailedSubject addedSubject : addedSubjects) {
-                if (newSubject.getName().equals(addedSubject.getName())) {
-                    conflicts.add("'" + newSubject.getName() + "' 과목이 이미 시간표에 있습니다.");
-                    break;
+            // 1. 기존 시간표와 중복 과목 검사
+            if (timetableGUI != null) {
+                if (timetableGUI.isSubjectAlreadyAdded(newSubject.getName())) {
+                    conflicts.add("'" + newSubject.getName() + "' 과목은 이미 시간표에 존재합니다.");
+                }
+
+                List<TimeSlot> newTimeSlots = parseTimeSlots(newSubject.getLectureTime());
+                for (TimeSlot slot : newTimeSlots) {
+                    int dayIndex = getDayIndex(slot.getDay());
+                    if (dayIndex == -1) continue;
+
+                    int startHour = getHourFromTime(slot.getStartTime());
+                    int startMinute = getMinuteFromTime(slot.getStartTime());
+                    int endHour = getHourFromTime(slot.getEndTime());
+                    int endMinute = getMinuteFromTime(slot.getEndTime());
+
+                    int startSlot = (startHour - 9) * 2 + (startMinute >= 30 ? 1 : 0);
+                    int endSlot = (endHour - 9) * 2 + (endMinute > 0 ? 1 : 0);
+                    int row = startSlot + 1;
+                    int height = Math.max(1, endSlot - startSlot);
+
+                    if (timetableGUI.isTimeOverlapped(dayIndex + 1, row, height)) {
+                        conflicts.add("'" + newSubject.getName() + "' 과목의 시간(" + slot.getDay() + " " +
+                                      slot.getStartTime() + "~" + slot.getEndTime() + ")이 시간표에 있는 다른 과목과 겹칩니다.");
+                    }
                 }
             }
-            
-            // 2. 시간 겹침 검사
-            List<TimeSlot> newTimeSlots = parseTimeSlots(newSubject.getLectureTime());
+
+            // 2. 상세창에서 추가된 과목들과 중복 체크
             for (DetailedSubject addedSubject : addedSubjects) {
+                if (newSubject.getName().equals(addedSubject.getName())) {
+                    conflicts.add("'" + newSubject.getName() + "' 과목이 이미 추가된 상태입니다.");
+                    break;
+                }
+
+                List<TimeSlot> newTimeSlots = parseTimeSlots(newSubject.getLectureTime());
                 List<TimeSlot> addedTimeSlots = parseTimeSlots(addedSubject.getLectureTime());
-                
+
                 for (TimeSlot newSlot : newTimeSlots) {
                     for (TimeSlot addedSlot : addedTimeSlots) {
                         if (isTimeConflict(newSlot, addedSlot)) {
-                            conflicts.add("'" + newSubject.getName() + "'과 '" + addedSubject.getName() + 
+                            conflicts.add("'" + newSubject.getName() + "'과 '" + addedSubject.getName() +
                                          "'의 강의시간이 겹칩니다. (" + newSlot.getDay() + "요일)");
                         }
                     }
                 }
             }
         }
-        
+
         // 3. 선택된 과목들 간의 겹침 검사
         for (int i = 0; i < selectedSubjects.size(); i++) {
             for (int j = i + 1; j < selectedSubjects.size(); j++) {
                 DetailedSubject subject1 = selectedSubjects.get(i);
                 DetailedSubject subject2 = selectedSubjects.get(j);
-                
-                // 같은 과목 검사
+
                 if (subject1.getName().equals(subject2.getName())) {
                     conflicts.add("선택한 과목 중 '" + subject1.getName() + "'이 중복되었습니다.");
                     continue;
                 }
-                
-                // 시간 겹침 검사
+
                 List<TimeSlot> slots1 = parseTimeSlots(subject1.getLectureTime());
                 List<TimeSlot> slots2 = parseTimeSlots(subject2.getLectureTime());
-                
+
                 for (TimeSlot slot1 : slots1) {
                     for (TimeSlot slot2 : slots2) {
                         if (isTimeConflict(slot1, slot2)) {
-                            conflicts.add("선택한 '" + subject1.getName() + "'과 '" + subject2.getName() + 
+                            conflicts.add("선택한 '" + subject1.getName() + "'과 '" + subject2.getName() +
                                          "'의 강의시간이 겹칩니다. (" + slot1.getDay() + "요일)");
                         }
                     }
                 }
             }
         }
-        
+
         return conflicts;
     }
+
 
     /**
      * 시간 겹침 검사

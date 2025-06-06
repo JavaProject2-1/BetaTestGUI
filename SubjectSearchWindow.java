@@ -6,9 +6,11 @@ import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
 
 public class SubjectSearchWindow extends JFrame {
-	private JTextField yearField;
+    private JTextField yearField;
     private JComboBox<String> semesterCombo;
     private JTextField subjectNameField;
     private JButton searchBtn;
@@ -18,11 +20,10 @@ public class SubjectSearchWindow extends JFrame {
     private TimetableGUI timetableGUI;
     private List<DetailedSubject> searchResults;
 
-    // 반드시 이 생성자 있어야 함!
     public SubjectSearchWindow(TimetableGUI timetableGUI) {
         this(timetableGUI, null);
     }
-    // 이미 있었던 생성자
+
     public SubjectSearchWindow(TimetableGUI timetableGUI, String initialSubjectName) {
         this.timetableGUI = timetableGUI;
         this.searchResults = new ArrayList<>();
@@ -72,6 +73,7 @@ public class SubjectSearchWindow extends JFrame {
                 if (columnIndex == 0) return Boolean.class;
                 return super.getColumnClass(columnIndex);
             }
+
             @Override
             public boolean isCellEditable(int row, int column) {
                 return column == 0;
@@ -88,6 +90,7 @@ public class SubjectSearchWindow extends JFrame {
                 resultTable.getColumnModel().getColumn(i).setCellRenderer(centerRenderer);
             }
         }
+
         resultTable.getColumnModel().getColumn(0).setPreferredWidth(50);
         resultTable.getColumnModel().getColumn(1).setPreferredWidth(200);
         resultTable.getColumnModel().getColumn(2).setPreferredWidth(100);
@@ -123,65 +126,48 @@ public class SubjectSearchWindow extends JFrame {
             return;
         }
 
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                searchBtn.setEnabled(false);
-                tableModel.setRowCount(0);
-                searchResults.clear();
-                statusLabel.setText("검색 중...");
+        new Thread(() -> {
+            searchBtn.setEnabled(false);
+            tableModel.setRowCount(0);
+            searchResults.clear();
+            statusLabel.setText("검색 중...");
 
-                try {
-                    String year = yearField.getText().trim();
-                    String semester = semesterCombo.getSelectedItem().toString();
+            try {
+                String year = yearField.getText().trim();
+                String semester = semesterCombo.getSelectedItem().toString();
 
-                    List<DetailedSubject> results = DetailedSubjectCrawler.searchDetailedSubjects(year, semester, subjectName);
-                    searchResults.addAll(results);
+                List<DetailedSubject> results = DetailedSubjectCrawler.searchDetailedSubjects(year, semester, subjectName);
+                searchResults.addAll(results);
 
-                    SwingUtilities.invokeLater(new Runnable() {
-                        @Override
-                        public void run() {
-                            for (DetailedSubject subject : results) {
-                                Object[] row = {
-                                        false,
-                                        subject.getName(),
-                                        subject.getCode(),
-                                        subject.getProfessor(),
-                                        subject.getLectureTime(),
-                                        subject.getClassroom(),
-                                        subject.getRoomNumber(),
-                                        subject.getYear(),
-                                        subject.isRequired() ? "O" : "",
-                                        subject.isDesign() ? "O" : "",
-                                        subject.getCredit()
-                                };
-                                tableModel.addRow(row);
-                            }
-                            statusLabel.setText("검색 완료: " + results.size() + "개 강의 발견");
-                        }
-                    });
+                SwingUtilities.invokeLater(() -> {
+                    for (DetailedSubject subject : results) {
+                        Object[] row = {
+                                false,
+                                subject.getName(),
+                                subject.getCode(),
+                                subject.getProfessor(),
+                                subject.getLectureTime(),
+                                subject.getClassroom(),
+                                subject.getRoomNumber(),
+                                subject.getYear(),
+                                subject.isRequired() ? "O" : "",
+                                subject.isDesign() ? "O" : "",
+                                subject.getCredit()
+                        };
+                        tableModel.addRow(row);
+                    }
+                    statusLabel.setText("검색 완료: " + results.size() + "개 강의 발견");
+                });
 
-                } catch (Exception ex) {
-                    ex.printStackTrace();
-                    SwingUtilities.invokeLater(new Runnable() {
-                        @Override
-                        public void run() {
-                            statusLabel.setText("검색 중 오류 발생: " + ex.getMessage());
-                        }
-                    });
-                } finally {
-                    SwingUtilities.invokeLater(new Runnable() {
-                        @Override
-                        public void run() {
-                            searchBtn.setEnabled(true);
-                        }
-                    });
-                }
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                SwingUtilities.invokeLater(() -> statusLabel.setText("검색 중 오류 발생: " + ex.getMessage()));
+            } finally {
+                SwingUtilities.invokeLater(() -> searchBtn.setEnabled(true));
             }
         }).start();
     }
 
-    // --- 핵심: 중복 체크 추가 ---
     private void addSelectedToTimetable() {
         List<DetailedSubject> selectedSubjects = getSelectedSubjects();
 
@@ -190,70 +176,131 @@ public class SubjectSearchWindow extends JFrame {
             return;
         }
 
+        // 선택된 과목들 중 중복된 과목명이 있는지 체크
+        Set<String> selectedSubjectNames = new HashSet<>();
+        List<String> duplicatedInSelection = new ArrayList<>();
+        
         for (DetailedSubject subject : selectedSubjects) {
-            String lectureTime = subject.getLectureTime(); // 예: "화 2B,3A,3B,목 1A,1B,2A"
+            String subjectName = subject.getName();
+            if (selectedSubjectNames.contains(subjectName)) {
+                if (!duplicatedInSelection.contains(subjectName)) {
+                    duplicatedInSelection.add(subjectName);
+                }
+            } else {
+                selectedSubjectNames.add(subjectName);
+            }
+        }
+        
+        // 한 번에 선택한 과목 중 중복이 있으면 경고
+        if (!duplicatedInSelection.isEmpty()) {
+            StringBuilder message = new StringBuilder();
+            message.append("선택한 과목 중 중복된 과목이 있습니다:\n");
+            for (String duplicatedName : duplicatedInSelection) {
+                message.append("- ").append(duplicatedName).append("\n");
+            }
+            message.append("\n같은 과목은 하나만 선택해주세요.");
+            
+            JOptionPane.showMessageDialog(this,
+                    message.toString(),
+                    "중복 선택 오류",
+                    JOptionPane.WARNING_MESSAGE);
+            return;
+        }
 
+        // 각 선택된 과목에 대해 개별적으로 처리
+        boolean anySubjectAdded = false;
+        
+        for (DetailedSubject subject : selectedSubjects) {
+            // 같은 교과목명이 이미 시간표에 있는지 체크
+            if (timetableGUI.isSubjectAlreadyAdded(subject.getName())) {
+                JOptionPane.showMessageDialog(this,
+                        "'" + subject.getName() + "' 과목은 이미 시간표에 추가되어 있습니다.\n" +
+                        "(교수: " + subject.getProfessor() + ", 시간: " + subject.getLectureTime() + ")\n\n" +
+                        "같은 교과목명의 과목은 중복해서 추가할 수 없습니다.",
+                        "중복 과목",
+                        JOptionPane.WARNING_MESSAGE);
+                continue;
+            }
+
+            // 시간표에 추가 시도
+            boolean subjectAddedSuccessfully = false;
+            String lectureTime = subject.getLectureTime();
             String[] parts = lectureTime.split(",");
             String currentDay = null;
-
+            
+            // 모든 시간대가 가능한지 먼저 체크
+            boolean canAddAllTimes = true;
+            List<TimeSlot> timeSlots = new ArrayList<>();
+            
             for (String part : parts) {
                 part = part.trim();
-
-                // 요일이 포함된 경우: "화 2B"
                 if (part.matches("^[월화수목금토일]\\s*\\d+[AB]$")) {
                     currentDay = part.substring(0, 1);
-                    part = part.substring(1).trim(); // 예: "2B"
+                    part = part.substring(1).trim();
                 }
 
-                if (currentDay == null) continue; // 요일이 없으면 무시
+                if (currentDay == null) continue;
 
                 try {
                     int col = dayToCol(currentDay);
                     int row = TimeTableUtils.slotToRow(part);
-
+                    
                     if (timetableGUI.isTimeOverlapped(col, row, 1)) {
-                        JOptionPane.showMessageDialog(this, "이미 해당 시간에 다른 수업이 있습니다!", "중복", JOptionPane.ERROR_MESSAGE);
-                        continue;
+                        canAddAllTimes = false;
+                        break;
                     }
-
-                    timetableGUI.addSubjectToTable(
-                            subject.getName(),
-                            subject.getProfessor(),
-                            subject.getClassroom(),
-                            col, row, 1,
-                            Color.CYAN
-                    );
+                    
+                    timeSlots.add(new TimeSlot(col, row, currentDay, part));
                 } catch (IllegalArgumentException ex) {
-                    JOptionPane.showMessageDialog(this, "시간 형식 오류: " + part, "오류", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(this,
+                            "시간 형식 오류: " + part + " (과목: " + subject.getName() + ")",
+                            "오류",
+                            JOptionPane.ERROR_MESSAGE);
+                    canAddAllTimes = false;
+                    break;
                 }
             }
+            
+            if (!canAddAllTimes) {
+                JOptionPane.showMessageDialog(this,
+                        "'" + subject.getName() + "' 과목의 시간대에 이미 다른 수업이 있습니다!",
+                        "시간 중복",
+                        JOptionPane.ERROR_MESSAGE);
+                continue;
+            }
+            
+            // 모든 시간대가 가능하면 추가
+            for (TimeSlot timeSlot : timeSlots) {
+                timetableGUI.addSubjectToTable(
+                        subject.getName(),
+                        subject.getProfessor(),
+                        subject.getClassroom(),
+                        timeSlot.col, timeSlot.row, 1,
+                        Color.CYAN
+                );
+            }
+            
+            subjectAddedSuccessfully = true;
+            anySubjectAdded = true;
         }
-        dispose();
-    }
-    private int periodToRow(String period) {
-        switch (period) {
-            case "1A": return 1;
-            case "1B": return 2;
-            case "2A": return 3;
-            case "2B": return 4;
-            case "3A": return 5;
-            case "3B": return 6;
-            case "4A": return 7;
-            case "4B": return 8;
-            case "5A": return 9;
-            case "5B": return 10;
-            case "6A": return 11;
-            case "6B": return 12;
-            case "7A": return 13;
-            case "7B": return 14;
-            case "8A": return 15;
-            case "8B": return 16;
-            case "9A": return 17;
-            case "9B": return 18;
-            default: return -1;
+        
+        if (anySubjectAdded) {
+            dispose();
         }
     }
-
+    
+    // 시간대 정보를 저장하는 내부 클래스
+    private static class TimeSlot {
+        int col, row;
+        String day, timeStr;
+        
+        TimeSlot(int col, int row, String day, String timeStr) {
+            this.col = col;
+            this.row = row;
+            this.day = day;
+            this.timeStr = timeStr;
+        }
+    }
 
     private int dayToCol(String day) {
         switch (day) {
@@ -264,14 +311,6 @@ public class SubjectSearchWindow extends JFrame {
             case "금": return 5;
             default: return -1;
         }
-    }
-
-    // "09:00" -> 1, "09:30" -> 2, ..., "17:00" -> 17
-    private int timeToRow(String time) {
-        String[] hm = time.split(":");
-        int hour = Integer.parseInt(hm[0]);
-        int min = Integer.parseInt(hm[1]);
-        return (hour - 9) * 2 + (min == 30 ? 2 : 1);
     }
 
     private List<DetailedSubject> getSelectedSubjects() {
